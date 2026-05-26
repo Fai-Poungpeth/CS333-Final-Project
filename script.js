@@ -9,12 +9,12 @@ const CLASS_COLORS = {
   'Class III': '#d8d1c7',
 };
 const CAUSE_COLORS = {
-  'Listeria': '#7c6654',
-  'Undeclared allergens': '#8d7460',
-  'Salmonella': '#9d826d',
-  'Labeling errors': '#ad927b',
-  'Foreign material': '#bea38c',
-  'E. coli': '#cfb69f',
+  'Listeria': '#e63946',
+  'Undeclared allergens': '#2a9d8f',
+  'Salmonella': '#e9c46a',
+  'Labeling errors': '#457b9d',
+  'Foreign material': '#f4a261',
+  'E. coli': '#6a4c93',
 };
 
 const parseFDADate = d3.timeParse('%Y%m%d');
@@ -126,63 +126,62 @@ function drawCauseChart() {
   }));
 
   const { width, height } = chartSize(selector, 350);
-  const margin = { top: 68, right: 26, bottom: 46, left: 138 };
+  const margin = { top: 68, right: 26, bottom: 26, left: 26 };
   const innerWidth = width - margin.left - margin.right;
   const innerHeight = height - margin.top - margin.bottom;
+  const radius = Math.min(innerWidth, innerHeight) / 2;
+  const cx = margin.left + innerWidth / 2;
+  const cy = margin.top + innerHeight / 2;
 
   const svg = d3.select(selector).append('svg')
     .attr('viewBox', `0 0 ${width} ${height}`)
     .attr('role', 'img')
-    .attr('aria-label', 'Horizontal bar chart of leading causes of FDA food recalls');
+    .attr('aria-label', 'Pie chart of leading causes of FDA food recalls');
 
-  const titleGroup = svg.append('g').attr('transform', `translate(${margin.left - 36},28)`);
+  const titleGroup = svg.append('g').attr('transform', `translate(${margin.left},28)`);
   addTitle(titleGroup, `Leading causes of FDA food recalls (${YEAR_MIN}-${YEAR_MAX})`, 'Categories are counted from recall reason text and are not mutually exclusive');
 
-  const x = d3.scaleLinear()
-    .domain([0, d3.max(data, d => d.count) || 1])
-    .nice()
-    .range([0, innerWidth]);
+  const total = d3.sum(data, d => d.count) || 1;
+  const pie = d3.pie().value(d => d.count).sort(null);
+  const arc = d3.arc().innerRadius(0).outerRadius(radius);
+  const labelArc = d3.arc().innerRadius(radius * 0.65).outerRadius(radius * 0.65);
 
-  const y = d3.scaleBand()
-    .domain(data.map(d => d.name))
-    .range([0, innerHeight])
-    .padding(0.32);
+  const g = svg.append('g').attr('transform', `translate(${cx},${cy})`);
 
-  const g = svg.append('g').attr('transform', `translate(${margin.left},${margin.top})`);
-
-  g.append('g')
-    .attr('class', 'grid')
-    .call(d3.axisBottom(x).ticks(4).tickSize(innerHeight).tickFormat(''));
-
-  g.append('g')
-    .attr('class', 'axis')
-    .call(d3.axisLeft(y));
-
-  g.append('g')
-    .attr('class', 'axis')
-    .attr('transform', `translate(0,${innerHeight})`)
-    .call(d3.axisBottom(x).ticks(4).tickFormat(formatNumber));
-
-  g.selectAll('rect')
-    .data(data)
-    .join('rect')
-    .attr('y', d => y(d.name))
-    .attr('width', d => x(d.count))
-    .attr('height', y.bandwidth())
-    .attr('rx', 3)
-    .attr('fill', d => CAUSE_COLORS[d.name])
-    .attr('opacity', 0.98)
+  g.selectAll('path')
+    .data(pie(data))
+    .join('path')
+    .attr('d', arc)
+    .attr('fill', d => CAUSE_COLORS[d.data.name])
+    .attr('stroke', '#ffffff')
+    .attr('stroke-width', 1.5)
+    .attr('opacity', 0.97)
     .on('mousemove', (event, d) => {
-      showTooltip(event, `<strong>${d.name}</strong><br>${formatNumber(d.count)} recall records`);
+      showTooltip(event, `<strong>${d.data.name}</strong><br>${formatNumber(d.data.count)} recall records (${formatPercent(d.data.count / total)})`);
     })
     .on('mouseleave', hideTooltip);
 
-  svg.append('text')
-    .attr('class', 'axis-label')
-    .attr('x', margin.left + innerWidth / 2)
-    .attr('y', height - 8)
+  g.selectAll('text.slice-label')
+    .data(pie(data).filter(d => (d.endAngle - d.startAngle) > 0.25))
+    .join('text')
+    .attr('class', 'slice-label')
+    .attr('transform', d => `translate(${labelArc.centroid(d)})`)
     .attr('text-anchor', 'middle')
-    .text(`Number of recall records (${YEAR_MIN}-${YEAR_MAX})`);
+    .attr('dominant-baseline', 'middle')
+    .style('font-size', '11px')
+    .style('fill', '#fff')
+    .style('pointer-events', 'none')
+    .text(d => formatPercent(d.data.count / total));
+
+  // Legend
+  const legendX = cx + radius + 16;
+  const legendStartY = cy - (data.length * 22) / 2;
+  const legend = svg.append('g').attr('transform', `translate(${legendX},${legendStartY})`);
+  data.forEach((d, i) => {
+    const row = legend.append('g').attr('transform', `translate(0,${i * 22})`);
+    row.append('rect').attr('width', 13).attr('height', 13).attr('fill', CAUSE_COLORS[d.name]).attr('rx', 2);
+    row.append('text').attr('x', 18).attr('y', 10).attr('class', 'legend-label').text(d.name);
+  });
 }
 
 function drawSeverityChart() {
